@@ -11,7 +11,7 @@ cp .env.example .env
 docker compose up --build -d
 ```
 
-Open `http://127.0.0.1:8088`. The first poster request downloads the Hipparcos catalog, constellation data, and JPL ephemeris into the persistent `sky_data` volume.
+Open `http://localhost:8088` locally or `http://HOST_IP:8088` from another device. By default Docker publishes port 8088 on all network interfaces. The first poster request downloads the Hipparcos catalog, constellation data, and JPL ephemeris into the persistent `sky_data` volume.
 
 To run the optional Cloudflare Tunnel container, place your token in `.env` and use:
 

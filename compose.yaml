@@ -9,7 +9,7 @@ services:
     restart: unless-stopped
     init: true
     ports:
-      - "${SKYMAP_BIND_ADDRESS:-127.0.0.1}:${SKYMAP_PORT:-8088}:8000"
+      - "${SKYMAP_BIND_ADDRESS:-0.0.0.0}:${SKYMAP_PORT:-8088}:8000"
     volumes:
       - sky_data:/app/data
       - app_runtime:/app/runtime
