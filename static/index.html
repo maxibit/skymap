@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="Create an exact, print-ready map of the sky for your moment and place.">
+  <title>Sky Poster Studio</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <header class="masthead">
+    <a class="brand" href="/"><span class="brand-mark">✦</span><span>Sky Poster<br><small>Studio</small></span></a>
+    <div class="header-note">ASTRONOMICALLY ACCURATE · PRINT READY</div>
+  </header>
+  <main>
+    <section class="intro">
+      <p class="eyebrow">YOUR MOMENT, WRITTEN IN THE STARS</p>
+      <h1>Create a map of the sky<br>you'll keep forever.</h1>
+      <p>Choose a place and moment. Fine-tune every detail. Download a gallery-quality poster ready for professional printing.</p>
+    </section>
+
+    <div class="studio">
+      <form id="poster-form" class="controls">
+        <section class="panel open">
+          <button type="button" class="panel-title"><span><b>01</b> Moment & place</span><i>−</i></button>
+          <div class="panel-body">
+            <label>City search<div class="search-wrap"><input id="city" autocomplete="off" placeholder="Search for a city…"><button type="button" id="search-city">Search</button></div></label>
+            <div id="results" class="results"></div>
+            <div class="grid-two"><label>Date<input type="date" id="date" required></label><label>Local time<input type="time" id="time" required></label></div>
+            <div class="location-card"><span id="location-name">Bucharest, Romania</span><small id="location-detail">44.4268° N · 26.1025° E · Europe/Bucharest</small></div>
+            <details><summary>Advanced coordinates</summary><div class="grid-two"><label>Latitude<input type="number" id="latitude" step="0.0001" value="44.4268"></label><label>Longitude<input type="number" id="longitude" step="0.0001" value="26.1025"></label></div><label>Timezone<input id="timezone" value="Europe/Bucharest"></label></details>
+          </div>
+        </section>
+
+        <section class="panel open">
+          <button type="button" class="panel-title"><span><b>02</b> Words</span><i>−</i></button>
+          <div class="panel-body">
+            <label>Title<input id="title" maxlength="100" value="THE SKY ABOVE"></label>
+            <label>Subtitle <small>Leave empty for automatic place and date</small><input id="subtitle" maxlength="160" placeholder="Automatic"></label>
+            <label>Footer <small>Leave empty for coordinates</small><input id="footer" maxlength="160" placeholder="Automatic"></label>
+          </div>
+        </section>
+
+        <section class="panel open">
+          <button type="button" class="panel-title"><span><b>03</b> Print & style</span><i>−</i></button>
+          <div class="panel-body">
+            <div class="grid-two"><label>Paper<select id="paper"><option>A3</option><option>A4</option></select></label><label>Orientation<select id="orientation"><option value="landscape">Landscape</option><option value="portrait">Portrait</option></select></label></div>
+            <div class="grid-two"><label>Print bleed<select id="bleed"><option value="3">3 mm</option><option value="5">5 mm</option><option value="0">None</option></select></label><label>Theme<select id="theme"><option value="midnight">Midnight Blue</option><option value="black">Deep Black</option><option value="ivory">Ivory</option><option value="emerald">Emerald Night</option></select></label></div>
+            <label>Star magnitude <output id="magnitude-value">5.5</output><input type="range" id="magnitude" min="3" max="7" step="0.1" value="5.5"><small>Lower is cleaner · higher shows more stars</small></label>
+          </div>
+        </section>
+
+        <section class="panel open">
+          <button type="button" class="panel-title"><span><b>04</b> Sky details</span><i>−</i></button>
+          <div class="panel-body toggles">
+            <label><span>Constellation lines</span><input type="checkbox" id="constellations" checked></label>
+            <label><span>IAU constellation names</span><input type="checkbox" id="constellation-names" checked></label>
+            <label><span>Coordinate grid</span><input type="checkbox" id="coordinate-grid" checked></label>
+            <label><span>Cardinal points</span><input type="checkbox" id="cardinal-points" checked></label>
+            <label><span>Milky Way</span><input type="checkbox" id="milky-way"></label>
+            <label><span>Ecliptic</span><input type="checkbox" id="ecliptic"></label>
+            <label><span>Sun</span><input type="checkbox" id="sun" checked></label>
+            <label><span>Moon</span><input type="checkbox" id="moon" checked></label>
+          </div>
+        </section>
+      </form>
+
+      <section class="preview-area">
+        <div class="preview-toolbar"><span>LIVE PREVIEW</span><span id="paper-label">A3 · LANDSCAPE · 3 MM BLEED</span></div>
+        <div id="preview-frame" class="preview-frame"><img id="preview" alt="Your star poster preview"><div id="empty-preview"><span>✦</span><p>Your sky will appear here</p></div><div id="loader"><span></span><p>Calculating the sky…</p></div></div>
+        <button id="update-preview" class="primary" type="button">Update preview <span>→</span></button>
+        <div class="downloads">
+          <button data-format="pdf">Download PDF <small>PRINT READY</small></button>
+          <button data-format="svg">Download SVG <small>VECTOR</small></button>
+          <button data-format="png">Download PNG <small>300 DPI</small></button>
+        </div>
+        <p id="status" role="status"></p>
+      </section>
+    </div>
+  </main>
+  <footer><span>SKY POSTER STUDIO</span><span>HIPPARCOS · SKYFIELD · JPL DE421</span></footer>
+  <script src="/static/app.js"></script>
+</body>
+</html>
