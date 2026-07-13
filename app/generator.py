@@ -26,10 +26,10 @@ from skyfield.data import hipparcos, stellarium
 CONSTELLATION_URL = "https://gist.githubusercontent.com/gacarrillor/e7fc425b5443617afd294b7ba6169864/raw/constellationship.fab"
 PAPER_MM = {"A3": (297.0, 420.0), "A4": (210.0, 297.0)}
 THEMES = {
-    "midnight": {"background": "#07111f", "ink": "#f4efe2", "secondary": "#9eb0c3", "grid": "#73879b", "accent": "#c7a96b"},
-    "black": {"background": "#050505", "ink": "#f5f3ed", "secondary": "#a9a9a9", "grid": "#777777", "accent": "#d6b96d"},
-    "ivory": {"background": "#f3eee3", "ink": "#17202b", "secondary": "#56616b", "grid": "#8e969b", "accent": "#9b702e"},
-    "emerald": {"background": "#071b18", "ink": "#f1ebda", "secondary": "#9bb6ad", "grid": "#698c82", "accent": "#cfad67"},
+    "midnight": {"background": "#07111f", "map_background": "#0c1c2e", "ink": "#f4efe2", "secondary": "#aebfd0", "grid": "#8295a8", "accent": "#c7a96b"},
+    "black": {"background": "#050505", "map_background": "#141414", "ink": "#f5f3ed", "secondary": "#b8b8b8", "grid": "#888888", "accent": "#d6b96d"},
+    "ivory": {"background": "#f3eee3", "map_background": "#e8e0d2", "ink": "#17202b", "secondary": "#4c5863", "grid": "#7e888e", "accent": "#9b702e"},
+    "emerald": {"background": "#071b18", "map_background": "#0d2b26", "ink": "#f1ebda", "secondary": "#abc4bb", "grid": "#789a90", "accent": "#cfad67"},
 }
 
 _lock = threading.Lock()
@@ -147,24 +147,30 @@ def render(options: PosterOptions, output_format: str, preview: bool = False) ->
         fig = plt.figure(figsize=(page[0] / 25.4, page[1] / 25.4), facecolor=colors["background"])
         # Layout is relative to the trim page; bleed remains a full-color perimeter.
         landscape = options.orientation == "landscape"
-        ax_rect = (.205, .105, .59, .75) if landscape else (.10, .20, .80, .58)
+        # Give the sky disc a stronger presence on the page while preserving the
+        # title and footer clear zones.
+        ax_rect = (.19, .095, .62, .79) if landscape else (.08, .18, .84, .62)
         ax = fig.add_axes(ax_rect, facecolor=colors["background"]); ax.set_aspect("equal")
         ax.set(xlim=(-1.06, 1.06), ylim=(-1.06, 1.06)); ax.axis("off")
+
+        # A subtly different disc tone survives print better than relying on a
+        # hairline outline alone to separate the map from the poster background.
+        ax.add_patch(plt.Circle((0, 0), 1, facecolor=colors["map_background"], edgecolor="none", zorder=-10))
 
         if options.milky_way:
             ax.add_collection(LineCollection(_milky_way(observer_at), colors=colors["secondary"], linewidths=8, alpha=.055, zorder=0))
         if options.coordinate_grid:
             for altitude in (30, 60):
                 radius = math.tan(math.radians(90 - altitude) / 2)
-                ax.add_patch(plt.Circle((0, 0), radius, fill=False, color=colors["grid"], lw=.35, alpha=.35))
+                ax.add_patch(plt.Circle((0, 0), radius, fill=False, color=colors["grid"], lw=.42, alpha=.48))
                 ax.text(.012, radius - .012, f"{altitude}°", color=colors["secondary"], fontsize=4.3, alpha=.65)
             spokes = [[(0, 0), (math.sin(math.radians(a)), math.cos(math.radians(a)))] for a in range(0, 360, 30)]
-            ax.add_collection(LineCollection(spokes, colors=colors["grid"], linewidths=.25, alpha=.22))
+            ax.add_collection(LineCollection(spokes, colors=colors["grid"], linewidths=.32, alpha=.32))
 
         labels = {}
         if options.constellations:
             segments, labels = _constellations(catalog, outlines, observer_at)
-            ax.add_collection(LineCollection(segments, colors=colors["secondary"], linewidths=.42, alpha=.42, zorder=1))
+            ax.add_collection(LineCollection(segments, colors=colors["secondary"], linewidths=.70, alpha=.65, zorder=1))
         if options.constellation_names:
             for name, point in labels.items():
                 if np.hypot(*point) < .94:
@@ -176,7 +182,7 @@ def render(options: PosterOptions, output_format: str, preview: bool = False) ->
             ax.add_collection(LineCollection(_split_visible(pa.degrees, pz.degrees), colors=colors["accent"], linewidths=.65, alpha=.72, linestyles="dashed"))
 
         order = np.argsort(magnitudes)[::-1]
-        sizes = np.clip(3.2 * np.power(2.512, 2.2 - magnitudes[order]), .18, 42)
+        sizes = np.clip(3.2 * np.power(2.512, 2.2 - magnitudes[order]), .28, 42)
         ax.scatter(x[order], y[order], s=sizes, c=colors["ink"], linewidths=0, alpha=.94, zorder=2)
 
         for enabled, body, glyph, color in ((options.sun, "sun", "☉", colors["accent"]), (options.moon, "moon", "●", colors["ink"])):
@@ -184,10 +190,10 @@ def render(options: PosterOptions, output_format: str, preview: bool = False) ->
                 body_app = observer_at.observe(ephemeris[body]).apparent(); ba, bz, _ = body_app.altaz()
                 bx, by, bv = _project(np.atleast_1d(ba.degrees), np.atleast_1d(bz.degrees))
                 if bv[0]:
-                    ax.scatter(bx, by, s=42 if body == "sun" else 28, facecolors=color, edgecolors=colors["background"], linewidths=.7, zorder=5)
+                    ax.scatter(bx, by, s=42 if body == "sun" else 28, facecolors=color, edgecolors=colors["map_background"], linewidths=.7, zorder=5)
                     ax.text(bx[0], by[0] - .035, body.upper(), color=colors["secondary"], fontsize=4.5, ha="center", va="top")
 
-        ax.add_patch(plt.Circle((0, 0), 1, fill=False, color=colors["ink"], lw=.9, alpha=.85, zorder=4))
+        ax.add_patch(plt.Circle((0, 0), 1, fill=False, color=colors["ink"], lw=1.1, alpha=.92, zorder=4))
         if options.cardinal_points:
             for label, px, py, ha, va in (("N", 0, 1.025, "center", "bottom"), ("E", 1.025, 0, "left", "center"), ("S", 0, -1.025, "center", "top"), ("W", -1.025, 0, "right", "center")):
                 ax.text(px, py, label, color=colors["ink"], fontsize=9, ha=ha, va=va)
