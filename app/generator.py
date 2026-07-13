@@ -190,8 +190,10 @@ def render(options: PosterOptions, output_format: str, preview: bool = False) ->
                 body_app = observer_at.observe(ephemeris[body]).apparent(); ba, bz, _ = body_app.altaz()
                 bx, by, bv = _project(np.atleast_1d(ba.degrees), np.atleast_1d(bz.degrees))
                 if bv[0]:
-                    ax.scatter(bx, by, s=42 if body == "sun" else 28, facecolors=color, edgecolors=colors["map_background"], linewidths=.7, zorder=5)
-                    ax.text(bx[0], by[0] - .035, body.upper(), color=colors["secondary"], fontsize=4.5, ha="center", va="top")
+                    marker_size = 60 if body == "sun" else 44
+                    ax.scatter(bx, by, s=marker_size, facecolors=color, edgecolors=colors["map_background"], linewidths=.8, zorder=5)
+                    ax.scatter(bx, by, s=marker_size + 24, facecolors="none", edgecolors=color, linewidths=.65, alpha=.85, zorder=5)
+                    ax.text(bx[0], by[0] - .04, body.upper(), color=colors["secondary"], fontsize=5, ha="center", va="top")
 
         ax.add_patch(plt.Circle((0, 0), 1, fill=False, color=colors["ink"], lw=1.1, alpha=.92, zorder=4))
         if options.cardinal_points:
