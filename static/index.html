@@ -35,6 +35,7 @@
         <section class="panel open">
           <button type="button" class="panel-title"><span><b>02</b> Words</span><i>−</i></button>
           <div class="panel-body">
+            <label>Occasion<select id="occasion"><option value="none">No preset</option><option value="first_meeting">First meeting</option><option value="wedding">Wedding</option><option value="anniversary">Anniversary</option><option value="birth">Birth</option><option value="engagement">Engagement</option><option value="special_moment">Special moment</option><option value="memorial">Memorial</option></select></label>
             <label>Title<input id="title" maxlength="100" value="THE SKY ABOVE"></label>
             <label>Subtitle <small>Leave empty for automatic place and date</small><input id="subtitle" maxlength="160" placeholder="Automatic"></label>
             <label>Footer <small>Leave empty for coordinates</small><input id="footer" maxlength="160" placeholder="Automatic"></label>
@@ -45,7 +46,7 @@
           <button type="button" class="panel-title"><span><b>03</b> Print & style</span><i>−</i></button>
           <div class="panel-body">
             <div class="grid-two"><label>Paper<select id="paper"><option>A3</option><option>A4</option></select></label><label>Orientation<select id="orientation"><option value="landscape">Landscape</option><option value="portrait">Portrait</option></select></label></div>
-            <div class="grid-two"><label>Print bleed<select id="bleed"><option value="3">3 mm</option><option value="5">5 mm</option><option value="0">None</option></select></label><label>Theme<select id="theme"><option value="midnight">Midnight Blue</option><option value="black">Deep Black</option><option value="ivory">Ivory</option><option value="emerald">Emerald Night</option></select></label></div>
+            <div class="grid-two"><label>Print bleed<select id="bleed"><option value="3">3 mm</option><option value="5">5 mm</option><option value="0">None</option></select></label><label>Theme<select id="theme"><option value="midnight">Midnight Blue</option><option value="black">Deep Black</option><option value="ivory">Ivory</option><option value="emerald">Emerald Night</option><option value="dusty_rose">Dusty Rose</option><option value="burgundy">Deep Burgundy</option><option value="paper_white">Paper White</option></select></label></div>
             <label>Star magnitude <output id="magnitude-value">5.5</output><input type="range" id="magnitude" min="3" max="7" step="0.1" value="5.5"><small>Lower is cleaner · higher shows more stars</small></label>
           </div>
         </section>
@@ -79,6 +80,6 @@
     </div>
   </main>
   <footer><span>SKY POSTER STUDIO</span><span>HIPPARCOS · SKYFIELD · JPL DE421</span></footer>
-  <script src="/static/app.js"></script>
+  <script src="/static/app.js?v=20260713-occasion-presets"></script>
 </body>
 </html>

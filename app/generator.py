@@ -30,6 +30,9 @@ THEMES = {
     "black": {"background": "#050505", "map_background": "#141414", "ink": "#f5f3ed", "secondary": "#b8b8b8", "grid": "#888888", "accent": "#d6b96d"},
     "ivory": {"background": "#f3eee3", "map_background": "#e8e0d2", "ink": "#17202b", "secondary": "#4c5863", "grid": "#7e888e", "accent": "#9b702e"},
     "emerald": {"background": "#071b18", "map_background": "#0d2b26", "ink": "#f1ebda", "secondary": "#abc4bb", "grid": "#789a90", "accent": "#cfad67"},
+    "dusty_rose": {"background": "#e5d1cf", "map_background": "#f0dfdc", "ink": "#36232c", "secondary": "#6d4e58", "grid": "#8c7078", "accent": "#996b52"},
+    "burgundy": {"background": "#20080e", "map_background": "#321018", "ink": "#f3e9df", "secondary": "#cfaaa5", "grid": "#a07878", "accent": "#c8925b"},
+    "paper_white": {"background": "#fdfcf9", "map_background": "#f1f2ef", "ink": "#18222a", "secondary": "#4f5d66", "grid": "#7b878e", "accent": "#9b682f"},
 }
 
 _lock = threading.Lock()
