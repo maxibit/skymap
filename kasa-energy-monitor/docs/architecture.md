@@ -44,7 +44,7 @@ it runs on. Decisions referenced here are recorded in [adr/](adr/).
 
 ```mermaid
 flowchart LR
-  user([User browser]) -->|HTTPS| cf[Cloudflare Access + Tunnel]
+  user([User browser]) -->|HTTPS| cf["Cloudflare Zero Trust (Access + Tunnel)"]
   subgraph cluster[Kubernetes cluster on 3 Proxmox VMs]
     cfd[cloudflared x2]
     app[kasa-energy-monitor]
@@ -60,7 +60,7 @@ flowchart LR
   prom -->|"scrape /metrics every 15s"| app
   graf -->|PromQL| prom
   prom -->|firing alerts| am
-  am -->|push| notify[ntfy / Telegram]
+  am -->|push| notify[Pushover]
   app -->|"TCP 9999, XOR, every 5s"| plugs[(Kasa plugs HS110 / KP115)]
   gh[(GitHub: homelab-gitops)] -->|pull| argo
   ghcr[(GHCR: images and charts)] -->|pull| argo
@@ -69,7 +69,8 @@ flowchart LR
 | Actor / system | Role |
 |---|---|
 | User | Views live data and history, toggles plugs |
-| Cloudflare | Public entry point; Access enforces identity before any request reaches the cluster |
+| Cloudflare Zero Trust | Public entry point: the Tunnel carries traffic, Access enforces identity before any request reaches the cluster |
+| Pushover | Delivers alert notifications to the phone |
 | Kasa plugs | Data source and control target on the home LAN, addressed by DHCP-reserved IPs |
 | GitHub | Source code, GitOps state, CI (GitHub Actions) |
 | GHCR | Container images and the Helm chart (OCI) |
@@ -137,7 +138,7 @@ from Prometheus scrapes.
 | `GET` | `/` | Embedded web UI |
 | `GET` | `/api/plugs` | JSON snapshot of all plugs |
 | `GET` | `/api/stream` | Server-Sent Events: a `snapshot` event on connect and after every poll cycle; heartbeat comment every 15 s |
-| `POST` | `/api/plugs/{deviceId}/relay` | Body `{"on": true}`. Rejects unknown devices and invalid bodies; checks `Origin`. Disabled when `readOnly: true` |
+| `POST` | `/api/plugs/{deviceId}/relay` | Body `{"on": true}`. Requires a valid Cloudflare Access JWT (when enabled); rejects unknown devices and invalid bodies; checks `Origin`. Disabled when `readOnly: true` |
 | `GET` | `/metrics` | Prometheus exposition format |
 | `GET` | `/healthz` | Liveness — the process is running and the HTTP server responds |
 | `GET` | `/readyz` | Readiness — configuration loaded and the first poll cycle completed |
@@ -197,8 +198,8 @@ pushes a snapshot to every connected client. The UI never queries Prometheus.
 **History.** Prometheus scrapes `/metrics` every 15 s (via a `ServiceMonitor`) and keeps
 one year of data on a persistent volume. Grafana queries Prometheus.
 
-**Alerting.** `PrometheusRule` objects are evaluated by Prometheus; Alertmanager routes
-notifications to ntfy or Telegram.
+**Alerting.** `PrometheusRule` objects are evaluated by Prometheus; Alertmanager sends
+notifications to Pushover ([§ 13](#notifications-pushover)).
 
 **Control.**
 
@@ -260,6 +261,10 @@ listenAddr: ":8080"
 pollInterval: 5s
 pollTimeout: 2s
 readOnly: false          # disables the relay endpoint (public demo)
+cloudflareAccess:        # verify the Access JWT on write requests
+  enabled: true
+  teamDomain: <team>.cloudflareaccess.com
+  audience: <access-application-aud-tag>
 plugs:
   - host: 192.168.1.101
   - host: 192.168.1.102
@@ -268,7 +273,8 @@ plugs:
 
 Environment overrides: `KASA_LISTEN_ADDR`, `KASA_POLL_INTERVAL`, `KASA_POLL_TIMEOUT`,
 `KASA_READ_ONLY`, `KASA_PLUGS` (comma-separated hosts), `KASA_SIMULATOR_PLUGS`
-(number of simulated plugs; replaces real plugs), `KASA_LOG_LEVEL`.
+(number of simulated plugs; replaces real plugs), `KASA_ACCESS_TEAM_DOMAIN`,
+`KASA_ACCESS_AUDIENCE`, `KASA_LOG_LEVEL`.
 
 Invalid configuration fails fast at start-up with a clear error.
 
@@ -283,7 +289,8 @@ Invalid configuration fails fast at start-up with a clear error.
 | `kasa` | kasa-energy-monitor (1 replica) | Pod Security `restricted`, NetworkPolicy |
 
 Public hostnames (via Cloudflare Tunnel, no Ingress controller —
-[ADR-0007](adr/0007-cloudflare-tunnel-without-ingress.md)):
+[ADR-0007](adr/0007-cloudflare-tunnel-without-ingress.md); each one is a Cloudflare Access
+application — [ADR-0013](adr/0013-cloudflare-zero-trust.md)):
 
 | Hostname | Target Service |
 |---|---|
@@ -323,14 +330,55 @@ flowchart LR
 
 | Layer | Control |
 |---|---|
-| Edge | Cloudflare Access policy on every hostname; no inbound ports open on the home network |
-| Identity in Grafana | Grafana JWT auth using the `Cf-Access-Jwt-Assertion` header (single sign-on) |
-| Application | Relay API accepts only configured devices and a strict JSON body; `Origin` check; read-only mode |
+| Edge | Cloudflare Zero Trust: an Access application on every hostname; tunnel only, no inbound ports open on the home network |
+| Identity | Signed Access JWT: single sign-on in Grafana, verified by the exporter on write requests |
+| Application | Relay API accepts only configured devices, a strict JSON body and a valid Access JWT; `Origin` check; audit log with the user's e-mail; read-only mode |
 | Pod | Pod Security Standard `restricted` enforced on the namespace; non-root, read-only FS |
 | Network | NetworkPolicy: ingress from `cloudflared` and `monitoring` only; egress to the plug subnet on TCP 9999 and to DNS (requires a CNI that enforces policies) |
 | Secrets | Only `SealedSecret` objects in Git; controller key backed up offline |
 | Supply chain | Trivy scans, SBOM, cosign keyless signatures, pinned digests, Renovate updates, distroless base |
 | Known limitation | The Kasa XOR protocol has no authentication — any LAN device can control the plugs. Mitigated only by network segmentation (IoT VLAN), outside the scope of this project |
+
+### Cloudflare Zero Trust
+
+Every public hostname is a **self-hosted Access application**. NetworkPolicy allows the UI
+port to be reached only from `cloudflared`, so no request can skip Access.
+
+| Setting | Value |
+|---|---|
+| Tunnel | Remotely managed in the Zero Trust dashboard; cloudflared runs with a token from a SealedSecret |
+| Access applications | `energy.example.com`, `grafana.example.com` |
+| Policy | Allow — only your own e-mail address |
+| Identity provider | One-time PIN by e-mail to start; GitHub or Google login later |
+| Session duration | 24 h |
+| Optional | Require a WARP-enrolled device (device posture); configuration as code with Terraform |
+
+After login, Cloudflare adds a signed JWT to every request in the `Cf-Access-Jwt-Assertion`
+header. It is used twice:
+
+**Grafana** trusts it for single sign-on, so there is no second password:
+
+```ini
+[auth.jwt]
+enabled = true
+header_name = Cf-Access-Jwt-Assertion
+email_claim = email
+username_claim = email
+jwk_set_url = https://<team>.cloudflareaccess.com/cdn-cgi/access/certs
+expect_claims = {"aud": ["<access-application-aud-tag>"]}
+auto_sign_up = true
+```
+
+**kasa-energy-monitor** verifies it on the relay endpoint: signature against the team's
+public keys (cached), `aud`, `iss` and expiry. A request without a valid token gets `401`.
+The e-mail claim goes into the audit log:
+
+```json
+{"level":"INFO","msg":"relay toggled","device_id":"…","on":false,"user":"you@example.com"}
+```
+
+Read endpoints do not require the token, so Prometheus can scrape `/metrics` from inside the
+cluster; they are still only reachable from the internet through Access.
 
 ## 12. Reliability and failure modes
 
@@ -360,6 +408,62 @@ flowchart LR
 | `KasaHighPower` | `kasa_power_watts` above a configurable threshold for 10 min | warning |
 | `KasaVoltageOutOfRange` | voltage outside 207–253 V (230 V ± 10 %) for 5 min | warning |
 
+### Notifications (Pushover)
+
+Alertmanager has a native Pushover receiver, so no bridge service is needed
+([ADR-0012](adr/0012-pushover-notifications.md)). The configuration lives in the
+kube-prometheus-stack values in `homelab-gitops`. The user key and the application token come
+from a SealedSecret mounted into Alertmanager as files, so they never appear in Git or in the
+rendered configuration.
+
+| Severity | Pushover priority | Effect on the phone |
+|---|---|---|
+| `critical` | 1 (high) | Bypasses quiet hours |
+| `warning` | 0 (normal) | Normal notification |
+| `info` (e.g. appliance finished) | -1 (low) | No sound or vibration |
+| `Watchdog`, `InfoInhibitor` | — | Sent to a `null` receiver |
+
+```yaml
+# homelab-gitops/values/kube-prometheus-stack.yaml (excerpt)
+alertmanager:
+  alertmanagerSpec:
+    secrets: [alertmanager-pushover]   # mounted at /etc/alertmanager/secrets/alertmanager-pushover/
+  config:
+    route:
+      receiver: pushover-normal
+      group_by: [alertname, device_id]
+      routes:
+        - receiver: "null"
+          matchers: ['alertname =~ "Watchdog|InfoInhibitor"']
+        - receiver: pushover-high
+          matchers: ['severity = "critical"']
+        - receiver: pushover-low
+          matchers: ['severity = "info"']
+    receivers:
+      - name: "null"
+      - name: pushover-normal
+        pushover_configs:
+          - &pushover
+            user_key_file: /etc/alertmanager/secrets/alertmanager-pushover/user_key
+            token_file: /etc/alertmanager/secrets/alertmanager-pushover/token
+            priority: "0"
+            url: '{{ (index .Alerts 0).Annotations.runbook_url }}'
+            url_title: Runbook
+            send_resolved: true
+      - name: pushover-high
+        pushover_configs:
+          - <<: *pushover
+            priority: "1"
+      - name: pushover-low
+        pushover_configs:
+          - <<: *pushover
+            priority: "-1"
+            send_resolved: false
+```
+
+Each message carries the alert summary, the plug name and a link to its runbook; a second
+message is sent when the alert resolves.
+
 ## 14. Open questions
 
 To be answered in Phase 0 (see [action-plan.md](action-plan.md)):
@@ -368,5 +472,6 @@ To be answered in Phase 0 (see [action-plan.md](action-plan.md)):
 - Available StorageClass for Prometheus and Grafana volumes.
 - Is Grafana part of kube-prometheus-stack or a separate release?
 - How cloudflared was installed and whether the tunnel is dashboard-managed or config-file managed.
+- Cloudflare Zero Trust team domain and which identity provider to use.
 - How the community exporter was installed and which metric names the current dashboard uses.
 - Hardware and firmware version of every plug.

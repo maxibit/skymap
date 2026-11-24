@@ -6,7 +6,7 @@
 ## Context
 
 GitOps requires every resource in Git, including the cloudflared tunnel token, the Grafana
-admin password and the notification token. The GitOps repository may be public.
+admin password and the Pushover credentials. The GitOps repository may be public.
 
 ## Decision
 

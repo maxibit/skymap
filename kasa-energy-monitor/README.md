@@ -37,16 +37,16 @@ and operations**.
 | Control | Switch plug relays on/off from the UI |
 | Metrics | Prometheus metrics following naming conventions (base units, info metric) |
 | History | Grafana dashboard as code: live power, daily/monthly kWh, cost per kWh |
-| Alerting | Plug offline, abnormal load, voltage out of range, exporter down — with runbooks |
+| Alerting | Plug offline, abnormal load, voltage out of range, exporter down — sent to Pushover with a runbook link |
 | Delivery | CI with lint, tests, vulnerability scanning, SBOM, signed multi-arch images |
 | Deployment | Helm chart (OCI) deployed by Argo CD from a GitOps repository |
-| Security | Cloudflare Tunnel + Access, NetworkPolicy, Pod Security `restricted`, Sealed Secrets |
+| Security | Cloudflare Zero Trust (Tunnel + Access, SSO via signed JWT), NetworkPolicy, Pod Security `restricted`, Sealed Secrets |
 
 ## Architecture at a glance
 
 ```mermaid
 flowchart LR
-  user([Browser]) -->|HTTPS| cf[Cloudflare Access + Tunnel]
+  user([Browser]) -->|HTTPS| cf["Cloudflare Zero Trust (Access + Tunnel)"]
   subgraph cluster[Kubernetes cluster on 3 Proxmox VMs]
     cfd[cloudflared]
     app[kasa-energy-monitor]
@@ -61,7 +61,7 @@ flowchart LR
   prom -->|"scrape /metrics"| app
   graf --> prom
   prom --> am
-  am --> notify[ntfy / Telegram]
+  am --> notify[Pushover]
   app -->|"TCP 9999 (XOR)"| plugs[(Kasa plugs)]
   gitops[(homelab-gitops repo)] --> argo
 ```
@@ -79,7 +79,8 @@ Full details: [docs/architecture.md](docs/architecture.md).
 | Packaging | Helm chart published as an OCI artifact to GHCR |
 | Platform | Kubernetes on 3 Proxmox VMs, Argo CD (app-of-apps), Sealed Secrets |
 | Observability | kube-prometheus-stack (Prometheus, Alertmanager, Grafana) |
-| Exposure | Cloudflare Tunnel (`cloudflared`) + Cloudflare Access — no Ingress controller |
+| Exposure | Cloudflare Zero Trust: Tunnel (`cloudflared`) + Access applications — no Ingress controller |
+| Notifications | Pushover, through the native Alertmanager receiver |
 
 ## Documentation
 
@@ -102,8 +103,8 @@ Full details: [docs/architecture.md](docs/architecture.md).
 | 4 | CI/CD and supply chain security | ⬜ Not started |
 | 5 | Helm chart published to GHCR | ⬜ Not started |
 | 6 | Shadow deployment next to the community exporter, then cutover | ⬜ Not started |
-| 7 | Observability as code: dashboard, alerts, notifications, runbooks | ⬜ Not started |
-| 8 | Hardening: Cloudflare Access, NetworkPolicy, Pod Security | ⬜ Not started |
+| 7 | Observability as code: dashboard, alerts, Pushover notifications, runbooks | ⬜ Not started |
+| 8 | Hardening: Cloudflare Zero Trust, NetworkPolicy, Pod Security | ⬜ Not started |
 | 9 | Portfolio polish: screenshots, demo, final documentation | ⬜ Not started |
 
 ## Getting started

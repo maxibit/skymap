@@ -17,5 +17,7 @@ accepted; a later ADR supersedes it instead.
 | [0009](0009-separate-app-and-gitops-repositories.md) | Separate application and GitOps repositories, app-of-apps | Proposed |
 | [0010](0010-sealed-secrets.md) | Sealed Secrets for secrets in Git | Proposed |
 | [0011](0011-dependency-free-embedded-ui.md) | Dependency-free UI embedded in the binary | Proposed |
+| [0012](0012-pushover-notifications.md) | Pushover for alert notifications | Proposed |
+| [0013](0013-cloudflare-zero-trust.md) | Cloudflare Zero Trust for access and identity | Proposed |
 
 Template: [template.md](template.md).

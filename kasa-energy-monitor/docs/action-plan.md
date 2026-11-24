@@ -35,6 +35,8 @@ security and documentation.
 - [ ] Note the metric names exposed by the community exporter and used by the current dashboard.
 - [ ] Export the current Grafana dashboard JSON as a fallback.
 - [ ] Create the GitHub repositories `kasa-energy-monitor` and `homelab-gitops`.
+- [ ] Create a Pushover application (API token) and note your user key.
+- [ ] Note the Cloudflare Zero Trust team domain and how the tunnel's public hostnames are configured.
 
 **Exit criterion:** an inventory document (`docs/inventory.md`) answers every open question
 in [architecture.md § 14](architecture.md#14-open-questions).
@@ -197,13 +199,16 @@ cluster only through a merged Renovate PR.
   - Health: poll duration, poll errors, scrape status.
 - [ ] Alerts from [architecture.md § 13](architecture.md#13-observability-of-the-service-itself)
       as `PrometheusRule`, with unit tests using `promtool test rules`.
-- [ ] Alertmanager route to ntfy or Telegram; the token stored as a SealedSecret.
+- [ ] Alertmanager Pushover receiver (native `pushover_configs`): user key and token from
+      a SealedSecret mounted as files; severity → priority mapping; `Watchdog` to a `null`
+      receiver; runbook link in every message. See
+      [architecture.md § 13](architecture.md#notifications-pushover).
 - [ ] A runbook per alert in `docs/runbooks/`, linked through the `runbook_url` annotation.
 - [ ] Optional: "appliance finished" notification (power below 5 W for 5 minutes after a
       period of high load).
 
-**Exit criterion:** unplugging a plug produces a notification on the phone within ~6 minutes,
-with a link to its runbook.
+**Exit criterion:** unplugging a plug produces a Pushover notification on the phone within
+~6 minutes, with a link to its runbook, and a second one when it comes back.
 
 **You learn:** dashboards as code, alert design, alert testing, on-call documentation.
 
@@ -213,15 +218,23 @@ with a link to its runbook.
 
 **Goal:** defence in depth for everything exposed through the tunnel.
 
-- [ ] Cloudflare Access applications and policies for both hostnames.
-- [ ] Grafana JWT authentication from the `Cf-Access-Jwt-Assertion` header; local login disabled.
+- [ ] Cloudflare Zero Trust: an Access application per hostname, an Allow policy for your
+      e-mail only, One-time PIN identity provider (GitHub/Google later), 24 h sessions.
+- [ ] Grafana JWT authentication from the `Cf-Access-Jwt-Assertion` header; local login form disabled.
+- [ ] Exporter verifies the Access JWT on the relay endpoint and writes the user's e-mail to
+      the audit log. ADR-0013 accepted.
 - [ ] Label namespaces with `pod-security.kubernetes.io/enforce: restricted` where possible.
 - [ ] NetworkPolicies for `kasa` (and `monitoring` if the CNI supports it); verify that they are enforced.
 - [ ] Verify image signatures at admission (optional: Kyverno or Sigstore policy-controller).
 - [ ] Back-up and restore test: Sealed Secrets key, Prometheus volume snapshot.
+- [ ] Optional: Zero Trust configuration as code with Terraform (tunnel routes, Access
+      applications, policies) in `homelab-gitops/terraform/cloudflare`.
+- [ ] Optional: private access to the Kubernetes API through the tunnel and the WARP client,
+      so `kubectl` works from anywhere without exposing the API server.
 
 **Exit criterion:** an unauthenticated request to either hostname never reaches the cluster;
-a pod in another namespace cannot reach the application.
+a relay request without a valid Access JWT gets `401`; a pod in another namespace cannot
+reach the application.
 
 **You learn:** zero-trust access, Kubernetes security primitives, admission policies.
 
@@ -234,7 +247,8 @@ a pod in another namespace cannot reach the application.
 - [ ] README: screenshots or a short GIF of the UI and the Grafana dashboard, CI badges,
       quick start, link to the architecture.
 - [ ] `make demo`: kind cluster + kube-prometheus-stack + application with simulated plugs.
-- [ ] Optional: public read-only demo (`readOnly: true`, simulated plugs) behind the tunnel.
+- [ ] Optional: public read-only demo (`readOnly: true`, simulated plugs) on its own hostname
+      with an Access Bypass policy.
 - [ ] All ADRs in final status; `docs/architecture.md` reflects reality.
 - [ ] Optional: a write-up of the migration from the manual setup to GitOps.
 

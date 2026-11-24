@@ -132,19 +132,19 @@ homelab-gitops/
 ├── values/                         # Helm values per component
 │   ├── argocd.yaml
 │   ├── sealed-secrets.yaml
-│   ├── kube-prometheus-stack.yaml
+│   ├── kube-prometheus-stack.yaml  # includes Alertmanager routes and the Pushover receiver
 │   ├── cloudflared.yaml
-│   └── kasa-energy-monitor.yaml    # plug list, hostnames, alert thresholds
+│   └── kasa-energy-monitor.yaml    # plug list, Access audience, alert thresholds
 ├── manifests/                      # plain manifests that are not part of a chart
 │   ├── namespaces/
 │   │   ├── kasa.yaml               # with Pod Security labels
 │   │   └── cloudflared.yaml
-│   ├── secrets/                    # SealedSecret objects only — never plain Secrets
-│   │   ├── cloudflared-tunnel-token.yaml
-│   │   ├── grafana-admin.yaml
-│   │   └── alertmanager-notifier.yaml
-│   └── alertmanager/
-│       └── config.yaml
+│   └── secrets/                    # SealedSecret objects only — never plain Secrets
+│       ├── cloudflared-tunnel-token.yaml
+│       ├── grafana-admin.yaml
+│       └── alertmanager-pushover.yaml   # Pushover user key + application token
+├── terraform/                      # optional: Cloudflare Zero Trust as code
+│   └── cloudflare/                 # tunnel routes, Access applications and policies
 ├── renovate.json                   # proposes chart and image version bumps
 └── README.md                       # how to bootstrap the cluster from scratch
 ```
