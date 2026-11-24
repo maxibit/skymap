@@ -89,6 +89,7 @@ Full details: [docs/architecture.md](docs/architecture.md).
 | [docs/action-plan.md](docs/action-plan.md) | Phased implementation plan with tasks and exit criteria |
 | [docs/repository-structure.md](docs/repository-structure.md) | Layout of the application repo and the GitOps repo |
 | [docs/adr/](docs/adr/) | Architecture Decision Records |
+| [docs/diagrams/traffic-flow.html](docs/diagrams/traffic-flow.html) | Interactive, animated traffic-flow diagram (open in a browser) |
 
 ## Roadmap
 

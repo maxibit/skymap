@@ -1,0 +1,650 @@
+<title>Kasa Monitor Traffic Flow</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@500;600&display=swap">
+<style>
+  /* Layout: header → flow tabs → wide system diagram (zones left→right: internet, cluster, LAN) → step timeline + legend */
+  :root {
+    --bg: #edf1ef;
+    --zone: #f7f9f8;
+    --zone-lan: #f8f5ec;
+    --node: #ffffff;
+    --surface-2: #e3e9e6;
+    --fg: #13201c;
+    --muted: #5a6964;
+    --line: #c6d1cd;
+    --line-strong: #8d9c97;
+    --accent: #0c7a69;
+    --flow-data: #0b8a73;
+    --flow-user: #2560d0;
+    --flow-alert: #cf3a3a;
+    --flow-deliver: #8550cc;
+    --font-display: "Space Grotesk", "Segoe UI", system-ui, sans-serif;
+    --font-body: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0b1110; --zone: #111917; --zone-lan: #17160f; --node: #18221f; --surface-2: #1d2926;
+      --fg: #e2ebe8; --muted: #93a49f; --line: #2a3835; --line-strong: #4f615b; --accent: #3cc8ad;
+      --flow-data: #35c9ac; --flow-user: #6d9cff; --flow-alert: #ff6b6b; --flow-deliver: #b48cff;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0b1110; --zone: #111917; --zone-lan: #17160f; --node: #18221f; --surface-2: #1d2926;
+    --fg: #e2ebe8; --muted: #93a49f; --line: #2a3835; --line-strong: #4f615b; --accent: #3cc8ad;
+    --flow-data: #35c9ac; --flow-user: #6d9cff; --flow-alert: #ff6b6b; --flow-deliver: #b48cff;
+    color-scheme: dark;
+  }
+
+  body { background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 15px; line-height: 1.55; }
+  .wrap {
+    max-width: 1240px; margin: 0 auto;
+    padding-block: 32px 56px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    display: grid; gap: 22px;
+  }
+  header { display: grid; gap: 6px; max-width: 70ch; }
+  .eyebrow { font-family: var(--font-mono); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
+  h1 { font-family: var(--font-display); font-weight: 600; font-size: clamp(28px, 4vw, 38px); line-height: 1.1; margin: 0; text-wrap: balance; }
+  header p { margin: 4px 0 0; color: var(--muted); }
+
+  .tabs { display: flex; flex-wrap: wrap; gap: 8px; }
+  .tab {
+    font: 500 13.5px/1 var(--font-body); color: var(--fg);
+    background: transparent; border: 1px solid var(--line); border-radius: 6px;
+    padding: 9px 13px; cursor: pointer;
+  }
+  .tab:hover { border-color: var(--line-strong); }
+  .tab[aria-selected="true"] { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+  button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  figure { margin: 0; display: grid; gap: 8px; }
+  .scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  #flow { display: block; width: 100%; min-width: 900px; height: auto; }
+  figcaption { font-size: 13px; color: var(--muted); }
+
+  /* diagram */
+  .zone { fill: var(--zone); stroke: var(--line); stroke-width: 1; }
+  .zone-lan { fill: var(--zone-lan); }
+  .zlabel { font: 500 11px var(--font-mono); letter-spacing: .1em; fill: var(--muted); }
+  .ns { fill: none; stroke: var(--line); stroke-dasharray: 4 4; }
+  .nslabel { font: 400 10.5px var(--font-mono); fill: var(--muted); }
+  .note { font: 400 11px var(--font-mono); fill: var(--muted); }
+  .edge { fill: none; stroke: var(--line-strong); stroke-width: 1.5; transition: stroke .3s, stroke-width .3s, opacity .3s; }
+  .arrowhead { fill: var(--line-strong); }
+  .elabel { font: 400 10.5px var(--font-mono); fill: var(--muted); paint-order: stroke; stroke: var(--zone); stroke-width: 4px; stroke-linejoin: round; transition: opacity .3s; }
+  .node { transition: opacity .3s; }
+  .node rect { fill: var(--node); stroke: var(--line-strong); stroke-width: 1.2; transition: stroke .3s; }
+  .n-title { font: 600 13px var(--font-body); fill: var(--fg); }
+  .n-sub { font: 400 10.5px var(--font-mono); fill: var(--muted); }
+  .focus .edge:not(.on), .focus .elabel:not(.on) { opacity: .2; }
+  .focus .node:not(.on) { opacity: .38; }
+  .node.on rect { stroke: var(--fg); }
+  .edge.now { stroke-width: 2.75; }
+  .edge.now.k-data { stroke: var(--flow-data); }
+  .edge.now.k-user { stroke: var(--flow-user); }
+  .edge.now.k-alert { stroke: var(--flow-alert); }
+  .edge.now.k-deliver { stroke: var(--flow-deliver); }
+  .elabel.now { fill: var(--fg); }
+  .node.down rect { stroke: var(--flow-alert); stroke-dasharray: 5 4; stroke-width: 1.6; }
+  .node.down .n-sub { fill: var(--flow-alert); }
+  .node.pulse rect { animation: pulse 1.3s ease-out; }
+  @keyframes pulse { 0% { stroke-width: 1.2; } 30% { stroke-width: 4.5; stroke: var(--accent); } 100% { stroke-width: 1.2; } }
+  .pkt { stroke: var(--node); stroke-width: 2; }
+  .pkt.k-data { fill: var(--flow-data); }
+  .pkt.k-user { fill: var(--flow-user); }
+  .pkt.k-alert { fill: var(--flow-alert); }
+  .pkt.k-deliver { fill: var(--flow-deliver); }
+  .pkt.dead { fill: var(--flow-alert); opacity: 0; transition: opacity .8s .25s; }
+
+  /* panel */
+  .panel { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(0, 1fr); gap: 32px; align-items: start; }
+  @media (max-width: 860px) { .panel { grid-template-columns: minmax(0, 1fr); } }
+  .flowhead { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: end; justify-content: space-between; }
+  .flowhead h2 { font-family: var(--font-display); font-weight: 600; font-size: 22px; margin: 0; }
+  .flowhead p { margin: 2px 0 0; color: var(--muted); font-size: 14px; }
+  .controls { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .ctl {
+    font: 500 13px/1 var(--font-body); color: var(--fg); background: var(--node);
+    border: 1px solid var(--line); border-radius: 6px; padding: 8px 11px; cursor: pointer;
+  }
+  .ctl:hover:not(:disabled) { border-color: var(--line-strong); }
+  .ctl:disabled { opacity: .4; cursor: default; }
+  .ctl[aria-pressed="true"] { background: var(--surface-2); border-color: var(--line-strong); }
+  .sep { width: 1px; height: 22px; background: var(--line); margin: 0 4px; }
+
+  .steps { list-style: none; margin: 16px 0 0; padding: 0; display: grid; position: relative; }
+  .steps::before { content: ""; position: absolute; left: 13px; top: 14px; bottom: 14px; width: 1px; background: var(--line); }
+  .step {
+    display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 12px; width: 100%;
+    text-align: left; background: transparent; border: 0; padding: 9px 0; cursor: pointer; color: var(--fg); font: inherit;
+  }
+  .num {
+    width: 27px; height: 27px; border-radius: 50%; display: grid; place-items: center; position: relative;
+    font: 500 12px var(--font-mono); background: var(--bg); border: 1px solid var(--line-strong); color: var(--muted);
+  }
+  .step[aria-current="step"] .num { color: var(--bg); border-color: transparent; }
+  .step[aria-current="step"].k-data .num { background: var(--flow-data); }
+  .step[aria-current="step"].k-user .num { background: var(--flow-user); }
+  .step[aria-current="step"].k-alert .num { background: var(--flow-alert); }
+  .step[aria-current="step"].k-deliver .num { background: var(--flow-deliver); }
+  .step-body { display: grid; gap: 3px; min-width: 0; padding-top: 3px; }
+  .step-title { font-weight: 600; font-size: 14.5px; }
+  .step-text { color: var(--muted); font-size: 14px; }
+  .step:not([aria-current="step"]) .step-title { color: var(--muted); font-weight: 500; }
+  .snippet {
+    display: block; margin-top: 6px; font: 400 12px/1.5 var(--font-mono); color: var(--fg);
+    background: var(--surface-2); border-radius: 6px; padding: 8px 10px; white-space: pre-wrap; overflow-wrap: anywhere;
+  }
+  .step:not([aria-current="step"]) .snippet { display: none; }
+
+  .amb { list-style: none; margin: 16px 0 0; padding: 0; display: grid; gap: 10px; }
+  .amb li { display: grid; grid-template-columns: 14px minmax(0, 1fr) auto; gap: 10px; align-items: baseline; font-size: 14px; }
+  .amb .when { font: 400 12px var(--font-mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+  .dot.k-data { background: var(--flow-data); }
+  .dot.k-user { background: var(--flow-user); }
+  .dot.k-alert { background: var(--flow-alert); }
+  .dot.k-deliver { background: var(--flow-deliver); }
+  .small { font-size: 13px; color: var(--muted); margin: 14px 0 0; }
+
+  aside { display: grid; gap: 22px; }
+  aside h3 { font: 500 11.5px var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 0 0 8px; }
+  .legend { list-style: none; margin: 0; padding: 0; display: grid; gap: 7px; font-size: 14px; }
+  .legend li { display: flex; gap: 10px; align-items: center; }
+  .notice { margin: 0; font-size: 14.5px; border-top: 1px solid var(--line); padding-top: 12px; text-wrap: pretty; }
+  .facts { margin: 0; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px 14px; font-size: 13.5px; }
+  .facts dt { font-family: var(--font-mono); font-size: 12px; color: var(--muted); padding-top: 2px; }
+  .facts dd { margin: 0; }
+</style>
+
+<div class="wrap">
+  <header>
+    <span class="eyebrow">Kasa Energy Monitor · target architecture</span>
+    <h1>Traffic flow</h1>
+    <p>How readings, page requests, alerts and releases move between your browser, Cloudflare, the cluster and the plugs. Pick a flow to step through it hop by hop.</p>
+  </header>
+
+  <div class="tabs" role="tablist" aria-label="Flow" id="tabs"></div>
+
+  <figure>
+    <div class="scroll">
+      <svg id="flow" viewBox="0 0 1180 680" role="img" aria-label="System diagram: browser and phone on the internet reach the cluster only through Cloudflare and cloudflared; the exporter polls three Kasa plugs on the home LAN over TCP 9999; Prometheus scrapes the exporter, Grafana queries Prometheus, Alertmanager notifies the phone; Argo CD pulls from GitHub and GHCR and applies changes to the cluster.">
+        <defs>
+          <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0 0 L10 5 L0 10 z" class="arrowhead"/>
+          </marker>
+        </defs>
+
+        <g>
+          <rect class="zone" x="16" y="16" width="250" height="648" rx="14"/>
+          <rect class="zone" x="290" y="16" width="600" height="648" rx="14"/>
+          <rect class="zone zone-lan" x="914" y="16" width="250" height="648" rx="14"/>
+          <text class="zlabel" x="32" y="42">INTERNET</text>
+          <text class="zlabel" x="306" y="42">KUBERNETES · 3 PROXMOX VMS</text>
+          <text class="zlabel" x="930" y="42">HOME LAN</text>
+
+          <rect class="ns" x="306" y="146" width="204" height="94" rx="10"/>
+          <text class="nslabel" x="318" y="164">ns/cloudflared</text>
+          <rect class="ns" x="568" y="146" width="224" height="94" rx="10"/>
+          <text class="nslabel" x="580" y="164">ns/kasa</text>
+          <rect class="ns" x="306" y="288" width="486" height="192" rx="10"/>
+          <text class="nslabel" x="318" y="306">ns/monitoring</text>
+          <rect class="ns" x="306" y="528" width="204" height="92" rx="10"/>
+          <text class="nslabel" x="318" y="546">ns/argocd</text>
+
+          <text class="note" x="1040" y="360" text-anchor="middle">legacy Kasa protocol</text>
+          <text class="note" x="1040" y="378" text-anchor="middle">no auth · DHCP-reserved IPs</text>
+        </g>
+
+        <g>
+          <path id="e-browser-cf" class="edge" d="M141 108 L141 176" marker-end="url(#arr)"/>
+          <path id="e-cf-cfd" class="edge" d="M242 202 L318 202" marker-end="url(#arr)"/>
+          <path id="e-cfd-app" class="edge" d="M498 202 L580 202" marker-end="url(#arr)"/>
+          <path id="e-cfd-graf" class="edge" d="M408 228 L408 316" marker-end="url(#arr)"/>
+          <path id="e-app-p1" class="edge" d="M780 202 L860 202 L860 122 L940 122" marker-end="url(#arr)"/>
+          <path id="e-app-p2" class="edge" d="M780 202 L940 202" marker-end="url(#arr)"/>
+          <path id="e-app-p3" class="edge" d="M780 202 L860 202 L860 282 L940 282" marker-end="url(#arr)"/>
+          <path id="e-prom-app" class="edge" d="M680 316 L680 228" marker-end="url(#arr)"/>
+          <path id="e-graf-prom" class="edge" d="M498 342 L580 342" marker-end="url(#arr)"/>
+          <path id="e-prom-am" class="edge" d="M680 368 L680 416" marker-end="url(#arr)"/>
+          <path id="e-am-phone" class="edge" d="M580 442 L242 442" marker-end="url(#arr)"/>
+          <path id="e-argo-git" class="edge" d="M318 572 L280 572 L280 542 L242 542" marker-end="url(#arr)"/>
+          <path id="e-argo-ghcr" class="edge" d="M318 592 L280 592 L280 622 L242 622" marker-end="url(#arr)"/>
+          <path id="e-git-ghcr" class="edge" d="M141 568 L141 596" marker-end="url(#arr)"/>
+          <path id="e-argo-app" class="edge" d="M498 582 L820 582 L820 215 L780 215" marker-end="url(#arr)"/>
+        </g>
+
+        <g>
+          <text class="elabel" data-edge="e-browser-cf" x="150" y="147">HTTPS</text>
+          <text class="elabel" data-edge="e-cf-cfd" x="280" y="193" text-anchor="middle">tunnel</text>
+          <text class="elabel" data-edge="e-cfd-app" x="539" y="193" text-anchor="middle">energy.*</text>
+          <text class="elabel" data-edge="e-cfd-graf" x="416" y="277">grafana.*</text>
+          <text class="elabel" data-edge="e-app-p2" x="820" y="193" text-anchor="middle">poll · 5s</text>
+          <text class="elabel" data-edge="e-prom-app" x="688" y="277">scrape · 15s</text>
+          <text class="elabel" data-edge="e-graf-prom" x="539" y="333" text-anchor="middle">PromQL</text>
+          <text class="elabel" data-edge="e-prom-am" x="688" y="397">alerts</text>
+          <text class="elabel" data-edge="e-am-phone" x="410" y="433" text-anchor="middle">notify</text>
+          <text class="elabel" data-edge="e-argo-git" x="280" y="532" text-anchor="middle">pulls Git</text>
+          <text class="elabel" data-edge="e-argo-ghcr" x="280" y="642" text-anchor="middle">pulls chart</text>
+          <text class="elabel" data-edge="e-git-ghcr" x="150" y="587">push</text>
+          <text class="elabel" data-edge="e-argo-app" x="828" y="402">apply</text>
+        </g>
+
+        <g>
+          <g class="node" id="n-browser"><rect x="40" y="56" width="202" height="52" rx="8"/><text class="n-title" x="141" y="78" text-anchor="middle">Browser</text><text class="n-sub" x="141" y="96" text-anchor="middle">energy.* · grafana.*</text></g>
+          <g class="node" id="n-cf"><rect x="40" y="176" width="202" height="52" rx="8"/><text class="n-title" x="141" y="198" text-anchor="middle">Cloudflare</text><text class="n-sub" x="141" y="216" text-anchor="middle">Access + Tunnel</text></g>
+          <g class="node" id="n-phone"><rect x="40" y="416" width="202" height="52" rx="8"/><text class="n-title" x="141" y="438" text-anchor="middle">Phone</text><text class="n-sub" x="141" y="456" text-anchor="middle">ntfy push</text></g>
+          <g class="node" id="n-github"><rect x="40" y="516" width="202" height="52" rx="8"/><text class="n-title" x="141" y="538" text-anchor="middle">GitHub</text><text class="n-sub" x="141" y="556" text-anchor="middle">repos · Actions · Renovate</text></g>
+          <g class="node" id="n-ghcr"><rect x="40" y="596" width="202" height="52" rx="8"/><text class="n-title" x="141" y="618" text-anchor="middle">GHCR</text><text class="n-sub" x="141" y="636" text-anchor="middle">image · Helm chart (OCI)</text></g>
+          <g class="node" id="n-cfd"><rect x="318" y="176" width="180" height="52" rx="8"/><text class="n-title" x="408" y="198" text-anchor="middle">cloudflared</text><text class="n-sub" x="408" y="216" text-anchor="middle">2 replicas</text></g>
+          <g class="node" id="n-app"><rect x="580" y="176" width="200" height="52" rx="8"/><text class="n-title" x="680" y="198" text-anchor="middle">kasa-energy-monitor</text><text class="n-sub" x="680" y="216" text-anchor="middle">poller · SSE · /metrics</text></g>
+          <g class="node" id="n-graf"><rect x="318" y="316" width="180" height="52" rx="8"/><text class="n-title" x="408" y="338" text-anchor="middle">Grafana</text><text class="n-sub" x="408" y="356" text-anchor="middle">dashboards as code</text></g>
+          <g class="node" id="n-prom"><rect x="580" y="316" width="200" height="52" rx="8"/><text class="n-title" x="680" y="338" text-anchor="middle">Prometheus</text><text class="n-sub" x="680" y="356" text-anchor="middle">1 year retention</text></g>
+          <g class="node" id="n-am"><rect x="580" y="416" width="200" height="52" rx="8"/><text class="n-title" x="680" y="438" text-anchor="middle">Alertmanager</text><text class="n-sub" x="680" y="456" text-anchor="middle">routes · runbooks</text></g>
+          <g class="node" id="n-argo"><rect x="318" y="556" width="180" height="52" rx="8"/><text class="n-title" x="408" y="578" text-anchor="middle">Argo CD</text><text class="n-sub" x="408" y="596" text-anchor="middle">app-of-apps</text></g>
+          <g class="node" id="n-p1"><rect x="940" y="96" width="200" height="52" rx="8"/><text class="n-title" x="1040" y="118" text-anchor="middle">HS110 #1</text><text class="n-sub" x="1040" y="136" text-anchor="middle">TCP 9999 · XOR</text></g>
+          <g class="node" id="n-p2"><rect x="940" y="176" width="200" height="52" rx="8"/><text class="n-title" x="1040" y="198" text-anchor="middle">HS110 #2</text><text class="n-sub" x="1040" y="216" text-anchor="middle">TCP 9999 · XOR</text></g>
+          <g class="node" id="n-p3"><rect x="940" y="256" width="200" height="52" rx="8"/><text class="n-title" x="1040" y="278" text-anchor="middle">KP115</text><text class="n-sub" x="1040" y="296" text-anchor="middle">TCP 9999 · XOR</text></g>
+        </g>
+
+        <g id="packets"></g>
+      </svg>
+    </div>
+    <figcaption>Arrows point away from the side that opens the connection. Moving dots are data, travelling in either direction. Nothing on the internet connects into the home network: cloudflared and Argo CD both reach out.</figcaption>
+  </figure>
+
+  <section class="panel">
+    <div>
+      <div class="flowhead">
+        <div>
+          <h2 id="flow-name"></h2>
+          <p id="flow-blurb"></p>
+        </div>
+        <div class="controls">
+          <button class="ctl" id="play" type="button">Pause</button>
+          <button class="ctl" id="prev" type="button" aria-label="Previous step">← Step</button>
+          <button class="ctl" id="next" type="button" aria-label="Next step">Step →</button>
+          <span class="sep" aria-hidden="true"></span>
+          <button class="ctl" id="sp-0.5" type="button" data-speed="0.5">0.5×</button>
+          <button class="ctl" id="sp-1" type="button" data-speed="1" aria-pressed="true">1×</button>
+          <button class="ctl" id="sp-2" type="button" data-speed="2">2×</button>
+        </div>
+      </div>
+      <div id="flow-body"></div>
+    </div>
+    <aside>
+      <div>
+        <h3>Traffic type</h3>
+        <ul class="legend">
+          <li><span class="dot k-data"></span>Telemetry: polls and scrapes</li>
+          <li><span class="dot k-user"></span>Your requests and live updates</li>
+          <li><span class="dot k-alert"></span>Failures and alerts</li>
+          <li><span class="dot k-deliver"></span>Releases and GitOps</li>
+        </ul>
+      </div>
+      <div>
+        <h3>Design point</h3>
+        <p class="notice" id="flow-notice"></p>
+      </div>
+      <div>
+        <h3>Timings</h3>
+        <dl class="facts">
+          <dt>poll</dt><dd>every 5 s, 2 s timeout, backoff to 60 s</dd>
+          <dt>scrape</dt><dd>every 15 s</dd>
+          <dt>heartbeat</dt><dd>SSE comment every 15 s</dd>
+          <dt>alert</dt><dd>plug down for 5 min</dd>
+          <dt>gitops</dt><dd>Argo CD checks Git every 3 min</dd>
+        </dl>
+      </div>
+    </aside>
+  </section>
+</div>
+
+<script>
+(function () {
+  const NS = 'http://www.w3.org/2000/svg';
+  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const svg = document.getElementById('flow');
+  const pk = document.getElementById('packets');
+  const edges = {};
+  svg.querySelectorAll('.edge').forEach(p => { edges[p.id] = { el: p, len: p.getTotalLength() }; });
+  const labels = {};
+  svg.querySelectorAll('.elabel').forEach(t => { (labels[t.dataset.edge] = labels[t.dataset.edge] || []).push(t); });
+
+  const EN = {
+    'e-browser-cf': ['n-browser', 'n-cf'], 'e-cf-cfd': ['n-cf', 'n-cfd'], 'e-cfd-app': ['n-cfd', 'n-app'],
+    'e-cfd-graf': ['n-cfd', 'n-graf'], 'e-app-p1': ['n-app', 'n-p1'], 'e-app-p2': ['n-app', 'n-p2'],
+    'e-app-p3': ['n-app', 'n-p3'], 'e-prom-app': ['n-prom', 'n-app'], 'e-graf-prom': ['n-graf', 'n-prom'],
+    'e-prom-am': ['n-prom', 'n-am'], 'e-am-phone': ['n-am', 'n-phone'], 'e-argo-git': ['n-argo', 'n-github'],
+    'e-argo-ghcr': ['n-argo', 'n-ghcr'], 'e-git-ghcr': ['n-github', 'n-ghcr'], 'e-argo-app': ['n-argo', 'n-app']
+  };
+  const f = id => [id, 1], b = id => [id, -1];
+  const IN = [f('e-browser-cf'), f('e-cf-cfd'), f('e-cfd-app')];
+  const OUT = [b('e-cfd-app'), b('e-cf-cfd'), b('e-browser-cf')];
+  const ROUND = id => [f(id), b(id)];
+
+  const SC = {
+    steady: {
+      name: 'Steady state', kind: 'data',
+      blurb: 'What the system does on its own. Animation time is compressed; the intervals listed are the real ones.',
+      notice: 'Every arrow into the cluster starts outside it and goes through Cloudflare. Every arrow out of the cluster is opened by something inside it.',
+      ambient: [
+        { kind: 'data', text: 'Exporter polls every plug', when: 'every 5 s' },
+        { kind: 'user', text: 'Snapshot pushed to open browsers', when: 'after each poll' },
+        { kind: 'data', text: 'Prometheus scrapes /metrics', when: 'every 15 s' },
+        { kind: 'user', text: 'Open Grafana dashboard refreshes', when: 'while open' },
+        { kind: 'deliver', text: 'Argo CD compares Git with the cluster', when: 'every 3 min' }
+      ]
+    },
+    poll: {
+      name: 'Collect readings', kind: 'data',
+      blurb: 'How the exporter gets data out of the plugs.',
+      notice: 'One poller feeds everything. The live UI and Prometheus read the same in-memory cache, so more viewers never mean more traffic to the plugs.',
+      steps: [
+        { title: 'Query every plug in parallel', text: 'One short TCP connection per plug, one request for device info and live readings.',
+          code: '{"system":{"get_sysinfo":{}},"emeter":{"get_realtime":{}}}',
+          tracks: [[f('e-app-p1')], [f('e-app-p2')], [f('e-app-p3')]] },
+        { title: 'Plugs answer within 2 s', text: 'Length-prefixed JSON, XOR-obfuscated with key 171. Older HS110 units report V and W; newer models report mV and mW.',
+          code: '{"voltage_mv":231450,"current_ma":412,"power_mw":71830,"total_wh":182340}',
+          tracks: [[b('e-app-p1')], [b('e-app-p2')], [b('e-app-p3')]] },
+        { title: 'Normalise and cache', text: 'Readings become volts, amperes, watts and joules and replace the previous snapshot in memory.',
+          code: 'state store  →  SSE hub  +  /metrics collector', pulse: ['n-app'] },
+        { title: 'Wait 5 s and repeat', text: 'A plug that does not answer is retried with exponential backoff, from 5 s up to 60 s.',
+          pulse: ['n-p1', 'n-p2', 'n-p3'] }
+      ]
+    },
+    live: {
+      name: 'Live view', kind: 'user',
+      blurb: 'Opening the dashboard and receiving updates without reloading.',
+      notice: 'The browser never talks to Prometheus. Live data comes straight from the exporter cache over one long-lived HTTP connection.',
+      steps: [
+        { title: 'Open energy.example.com', text: 'Cloudflare Access checks who you are at the edge, before anything reaches home.', tracks: [[f('e-browser-cf')]] },
+        { title: 'Through the tunnel', text: 'cloudflared keeps an outbound connection to Cloudflare, so no port is open on the router.', tracks: [[f('e-cf-cfd')]] },
+        { title: 'Subscribe to the stream', text: 'cloudflared forwards to the kasa-energy-monitor Service.',
+          code: 'GET /api/stream\nAccept: text/event-stream', tracks: [[f('e-cfd-app')]] },
+        { title: 'Snapshot after every poll', text: 'The exporter pushes the full state as one event; the page updates its cards in place.',
+          code: 'event: snapshot\ndata: {"plugs":[…]}', tracks: [OUT] },
+        { title: 'And again, 5 s later', text: 'A comment line every 15 s keeps the connection open through Cloudflare when nothing changes.',
+          code: ': heartbeat', tracks: [OUT] }
+      ]
+    },
+    toggle: {
+      name: 'Toggle a plug', kind: 'user',
+      blurb: 'Switching HS110 #2 off from the browser.',
+      notice: 'The relay endpoint only accepts device ids from the configuration and a body of exactly {"on": true|false}. The page learns the new state from the stream, not from the POST response.',
+      steps: [
+        { title: 'Press OFF on HS110 #2', text: 'The request takes the same path as the page: Cloudflare, tunnel, Service.',
+          code: 'POST /api/plugs/{deviceId}/relay\n{"on": false}', tracks: [IN] },
+        { title: 'Send the relay command', text: 'Only after the device id, the body and the Origin header pass validation.',
+          code: '{"system":{"set_relay_state":{"state":0}}}', tracks: [[f('e-app-p2')]] },
+        { title: 'Plug confirms', text: 'err_code 0 means the relay switched.',
+          code: '{"system":{"set_relay_state":{"err_code":0}}}', tracks: [[b('e-app-p2')]] },
+        { title: 'Re-poll immediately', text: 'The poller reads this plug again instead of waiting for the next cycle.', tracks: [ROUND('e-app-p2')] },
+        { title: 'Every browser sees it', text: 'The POST returns 204, and the next snapshot shows the relay off in every open tab.',
+          code: '204 No Content\nevent: snapshot', tracks: [OUT] }
+      ]
+    },
+    history: {
+      name: 'History in Grafana', kind: 'data',
+      blurb: 'From a scrape to a kWh-per-day chart.',
+      notice: 'Prometheus pulls from the exporter on its own schedule. Cost is calculated in Grafana from a dashboard variable, so a price change needs no deploy.',
+      steps: [
+        { title: 'Scrape every 15 s', text: 'A ServiceMonitor tells Prometheus where the exporter is.', code: 'GET /metrics', tracks: [[f('e-prom-app')]] },
+        { title: 'Cached values come back', text: 'The exporter answers from memory, without contacting the plugs.',
+          code: 'kasa_power_watts{device_id="…"} 71.83\nkasa_energy_joules_total{device_id="…"} 6.564e+08', tracks: [[b('e-prom-app')]] },
+        { title: 'Open grafana.example.com', text: 'Same tunnel and Access policy; Grafana signs you in from the Cloudflare token.',
+          kind: 'user', tracks: [[f('e-browser-cf'), f('e-cf-cfd'), f('e-cfd-graf')]] },
+        { title: 'Query with PromQL', text: 'Grafana asks Prometheus for energy per day, in kWh.',
+          code: 'increase(kasa_energy_joules_total[1d]) / 3.6e6', tracks: [ROUND('e-graf-prom')] },
+        { title: 'Dashboard renders', text: 'Daily and monthly kWh, power per plug and cost per kWh.',
+          kind: 'user', tracks: [[b('e-cfd-graf'), b('e-cf-cfd'), b('e-browser-cf')]] }
+      ]
+    },
+    alert: {
+      name: 'Plug goes offline', kind: 'alert',
+      blurb: 'The KP115 loses Wi-Fi and stays down.',
+      notice: 'Alerts are evaluated inside the cluster, so they fire even when nobody has a dashboard open. Each alert links to its runbook in the repository.',
+      steps: [
+        { title: 'KP115 stops answering', text: 'The poll times out after 2 s and the plug is marked offline. The other plugs are unaffected.',
+          code: 'dial tcp …:9999: i/o timeout', tracks: [[f('e-app-p3')]], fail: true, down: ['n-p3'] },
+        { title: 'The next scrape reports it', text: 'The exporter still answers; it reports the plug as down.',
+          code: 'kasa_up{device_id="…"} 0', kind: 'data', tracks: [ROUND('e-prom-app')] },
+        { title: 'The rule waits 5 minutes', text: 'A short Wi-Fi drop does not notify anyone.',
+          code: 'alert: KasaPlugDown\nexpr: kasa_up == 0\nfor: 5m', pulse: ['n-prom'] },
+        { title: 'Alert fires', text: 'Alertmanager groups it and chooses the notification route.', tracks: [[f('e-prom-am')]] },
+        { title: 'Push to your phone', text: 'The notification carries a link to the runbook.',
+          code: 'runbook_url: …/docs/runbooks/KasaPlugDown.md', tracks: [[f('e-am-phone')]] }
+      ]
+    },
+    release: {
+      name: 'Ship a release', kind: 'deliver',
+      blurb: 'From a merged pull request to a new pod, without touching kubectl.',
+      notice: 'CI never holds cluster credentials. Argo CD pulls the desired state from Git, so a deploy is a merged pull request and a rollback is a git revert.',
+      steps: [
+        { title: 'Merge the release PR', text: 'release-please tags the version; GitHub Actions runs tests, builds and scans the image.',
+          code: 'tag v0.2.0', pulse: ['n-github'] },
+        { title: 'Publish signed artifacts', text: 'Multi-arch image and Helm chart go to GHCR with an SBOM and a cosign signature.',
+          code: 'ghcr.io/<user>/kasa-energy-monitor:0.2.0', tracks: [[f('e-git-ghcr')]] },
+        { title: 'Renovate proposes the upgrade', text: 'A pull request in homelab-gitops bumps the chart version. You review and merge it.',
+          pulse: ['n-github'] },
+        { title: 'Argo CD sees the new commit', text: 'It compares Git with the cluster every 3 minutes, or immediately with a webhook.',
+          tracks: [ROUND('e-argo-git')] },
+        { title: 'Fetch the chart', text: 'Argo CD renders the manifests for the new version.',
+          code: 'oci://ghcr.io/<user>/charts/kasa-energy-monitor', tracks: [ROUND('e-argo-ghcr')] },
+        { title: 'Roll out', text: 'The Deployment starts the new pod; readiness decides when it takes traffic.',
+          tracks: [[f('e-argo-app')]], pulse: ['n-app'] }
+      ]
+    }
+  };
+  const ORDER = ['steady', 'poll', 'live', 'toggle', 'history', 'alert', 'release'];
+
+  const AMB = [
+    { every: 4000, off: 200, kind: 'data', tracks: [ROUND('e-app-p1'), ROUND('e-app-p2'), ROUND('e-app-p3')] },
+    { every: 4000, off: 2000, kind: 'user', tracks: [OUT] },
+    { every: 9000, off: 3000, kind: 'data', tracks: [ROUND('e-prom-app')] },
+    { every: 12000, off: 5600, kind: 'user', tracks: [ROUND('e-graf-prom')] },
+    { every: 15000, off: 8200, kind: 'deliver', tracks: [ROUND('e-argo-git')] }
+  ];
+
+  const PX_PER_MS = 0.3;
+  let clock = 0, last = null, playing = !reduce, speed = 1, singleStep = false;
+  let scen = 'steady', idx = 0, stepEnd = 0, ambStart = 0;
+  let packets = [];
+
+  const node = id => document.getElementById(id);
+  const subText = {};
+  ['n-p1', 'n-p2', 'n-p3'].forEach(id => { subText[id] = node(id).querySelector('.n-sub').textContent; });
+
+  function spawn(track, kind, fail) {
+    if (reduce) return 0;
+    const segs = track.map(([id, dir]) => ({ el: edges[id].el, len: edges[id].len, dir }));
+    const total = segs.reduce((a, s) => a + s.len / PX_PER_MS, 0);
+    const c = document.createElementNS(NS, 'circle');
+    c.setAttribute('r', '5.5');
+    c.setAttribute('class', 'pkt k-' + kind);
+    pk.appendChild(c);
+    const p = { segs, total, start: clock, el: c, fail: !!fail, dead: false };
+    packets.push(p);
+    place(p, 0);
+    return fail ? total * 0.55 : total;
+  }
+  function place(p, e) {
+    let t = Math.min(e, p.fail ? p.total * 0.55 : p.total), acc = 0;
+    for (let i = 0; i < p.segs.length; i++) {
+      const s = p.segs[i], d = s.len / PX_PER_MS;
+      if (t <= acc + d || i === p.segs.length - 1) {
+        const r = Math.max(0, Math.min(1, (t - acc) / d));
+        const pt = s.el.getPointAtLength(s.dir > 0 ? r * s.len : (1 - r) * s.len);
+        p.el.setAttribute('cx', pt.x.toFixed(1));
+        p.el.setAttribute('cy', pt.y.toFixed(1));
+        return;
+      }
+      acc += d;
+    }
+  }
+  function clearPackets() { packets.forEach(p => p.el.remove()); packets = []; }
+  function updatePackets() {
+    packets = packets.filter(p => {
+      const e = clock - p.start;
+      place(p, e);
+      if (p.fail) {
+        if (!p.dead && e >= p.total * 0.55) { p.dead = true; p.el.classList.add('dead'); }
+        if (e >= p.total * 0.55 + 1200 / Math.max(speed, .5)) { p.el.remove(); return false; }
+        return true;
+      }
+      if (e >= p.total) { p.el.remove(); return false; }
+      return true;
+    });
+  }
+  function pulse(ids) {
+    ids.forEach(id => { const n = node(id); n.classList.remove('pulse'); void n.getBoundingClientRect(); n.classList.add('pulse'); });
+  }
+  function clearDown() {
+    svg.querySelectorAll('.node.down').forEach(n => { n.classList.remove('down'); n.querySelector('.n-sub').textContent = subText[n.id]; });
+  }
+
+  function highlight() {
+    const sc = SC[scen];
+    const focus = !!sc.steps;
+    svg.classList.toggle('focus', focus);
+    const onEdges = new Set(), onNodes = new Set();
+    if (focus) sc.steps.forEach(st => {
+      (st.tracks || []).forEach(tr => tr.forEach(([id]) => { onEdges.add(id); EN[id].forEach(n => onNodes.add(n)); }));
+      (st.pulse || []).forEach(n => onNodes.add(n));
+    });
+    const cur = focus ? sc.steps[idx] : null;
+    const nowEdges = new Set();
+    if (cur) (cur.tracks || []).forEach(tr => tr.forEach(([id]) => nowEdges.add(id)));
+    const kind = cur ? (cur.kind || sc.kind) : '';
+    Object.keys(edges).forEach(id => {
+      const cls = 'edge' + (onEdges.has(id) ? ' on' : '') + (nowEdges.has(id) ? ' now k-' + kind : '');
+      edges[id].el.setAttribute('class', cls);
+      (labels[id] || []).forEach(t => t.setAttribute('class', 'elabel' + (onEdges.has(id) ? ' on' : '') + (nowEdges.has(id) ? ' now' : '')));
+    });
+    svg.querySelectorAll('.node').forEach(n => n.classList.toggle('on', onNodes.has(n.id)));
+  }
+
+  function startStep(i) {
+    const sc = SC[scen];
+    idx = i;
+    clearPackets();
+    if (i === 0) clearDown();
+    const st = sc.steps[i];
+    const kind = st.kind || sc.kind;
+    (st.down || []).forEach(id => { node(id).classList.add('down'); node(id).querySelector('.n-sub').textContent = 'no response'; });
+    let dur = 0;
+    (st.tracks || []).forEach(tr => { dur = Math.max(dur, spawn(tr, kind, st.fail)); });
+    if (st.pulse) pulse(st.pulse);
+    if (!st.tracks) dur = Math.max(dur, 1500);
+    if (reduce) dur = 2600;
+    stepEnd = clock + dur + 1000;
+    highlight();
+    renderSteps();
+  }
+
+  function ambient() {
+    const t = clock - ambStart;
+    AMB.forEach(a => {
+      if (t < a.off) return;
+      const n = Math.floor((t - a.off) / a.every);
+      if (n > a.n) { a.n = n; a.tracks.forEach(tr => spawn(tr, a.kind)); }
+    });
+  }
+
+  function tick(ts) {
+    const dt = last === null ? 0 : Math.min(ts - last, 64);
+    last = ts;
+    if (playing) {
+      clock += dt * speed;
+      if (scen === 'steady') ambient();
+      else if (clock >= stepEnd) {
+        if (singleStep) { playing = false; singleStep = false; syncControls(); }
+        else startStep((idx + 1) % SC[scen].steps.length);
+      }
+    }
+    updatePackets();
+    requestAnimationFrame(tick);
+  }
+
+  // ---------- UI ----------
+  const tabs = document.getElementById('tabs');
+  ORDER.forEach(key => {
+    const btn = document.createElement('button');
+    btn.type = 'button'; btn.className = 'tab'; btn.id = 'tab-' + key;
+    btn.setAttribute('role', 'tab'); btn.textContent = SC[key].name;
+    btn.addEventListener('click', () => setScenario(key));
+    tabs.appendChild(btn);
+  });
+
+  const esc = s => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const body = document.getElementById('flow-body');
+
+  function renderSteps() {
+    const sc = SC[scen];
+    if (!sc.steps) {
+      body.innerHTML = '<ul class="amb">' + sc.ambient.map(a =>
+        '<li><span class="dot k-' + a.kind + '"></span><span>' + esc(a.text) + '</span><span class="when">' + esc(a.when) + '</span></li>').join('') +
+        '</ul><p class="small">' + (reduce ? 'Motion is reduced on this device, so packets are not animated. Pick a flow and use the step buttons.' : 'Pick a flow above to follow one request hop by hop.') + '</p>';
+      return;
+    }
+    body.innerHTML = '<ol class="steps">' + sc.steps.map((st, i) => {
+      const kind = st.kind || sc.kind;
+      return '<li><button type="button" class="step k-' + kind + '" data-i="' + i + '"' + (i === idx ? ' aria-current="step"' : '') + '>' +
+        '<span class="num">' + (i + 1) + '</span><span class="step-body"><span class="step-title">' + esc(st.title) + '</span>' +
+        '<span class="step-text">' + esc(st.text) + '</span>' + (st.code ? '<code class="snippet">' + esc(st.code) + '</code>' : '') +
+        '</span></button></li>';
+    }).join('') + '</ol>';
+    body.querySelectorAll('.step').forEach(btn => btn.addEventListener('click', () => goStep(+btn.dataset.i)));
+  }
+
+  function goStep(i) {
+    if (!SC[scen].steps) return;
+    const n = SC[scen].steps.length;
+    if (!playing) { singleStep = true; playing = true; }
+    startStep((i + n) % n);
+    syncControls();
+  }
+
+  function setScenario(key) {
+    scen = key; idx = 0; singleStep = false;
+    clearPackets(); clearDown();
+    ambStart = clock; AMB.forEach(a => { a.n = -1; });
+    if (!reduce) playing = true;
+    ORDER.forEach(k => document.getElementById('tab-' + k).setAttribute('aria-selected', String(k === key)));
+    const sc = SC[key];
+    document.getElementById('flow-name').textContent = sc.name;
+    document.getElementById('flow-blurb').textContent = sc.blurb;
+    document.getElementById('flow-notice').textContent = sc.notice;
+    if (sc.steps) startStep(0); else { highlight(); renderSteps(); }
+    syncControls();
+  }
+
+  const playBtn = document.getElementById('play');
+  const prevBtn = document.getElementById('prev');
+  const nextBtn = document.getElementById('next');
+  function syncControls() {
+    playBtn.textContent = playing && !singleStep ? 'Pause' : 'Play';
+    const stepped = !!SC[scen].steps;
+    prevBtn.disabled = !stepped; nextBtn.disabled = !stepped;
+  }
+  playBtn.addEventListener('click', () => {
+    if (playing && !singleStep) playing = false;
+    else { playing = true; singleStep = false; }
+    syncControls();
+  });
+  prevBtn.addEventListener('click', () => { singleStep = true; playing = true; goStep(idx - 1); });
+  nextBtn.addEventListener('click', () => { singleStep = true; playing = true; goStep(idx + 1); });
+  document.querySelectorAll('[data-speed]').forEach(btn => btn.addEventListener('click', () => {
+    speed = parseFloat(btn.dataset.speed);
+    document.querySelectorAll('[data-speed]').forEach(o => o.setAttribute('aria-pressed', String(o === btn)));
+  }));
+
+  setScenario('steady');
+  requestAnimationFrame(tick);
+})();
+</script>
